@@ -44,17 +44,28 @@ const Login = () => {
       }
 
       if (data?.session) {
+        // Check user role first
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .maybeSingle();
+
+        if (!roleData) {
+          toast({
+            title: "Access Denied",
+            description: "No role assigned. Please contact administrator.",
+            variant: "destructive"
+          });
+          await supabase.auth.signOut();
+          setIsLoading(false);
+          return;
+        }
+
         // Check if user has enrolled 2FA
         const { data: authData } = await supabase
           .from('auth_data')
           .select('face_enrolled, totp_verified')
-          .eq('user_id', data.user.id)
-          .maybeSingle();
-
-        // Fetch user role
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
           .eq('user_id', data.user.id)
           .maybeSingle();
 
@@ -67,7 +78,7 @@ const Login = () => {
           });
         } else {
           // No 2FA setup, redirect directly
-          navigate("/dashboard", { state: { role: roleData?.role || 'user' } });
+          navigate("/dashboard");
         }
       }
     } catch (error) {
@@ -103,24 +114,37 @@ const Login = () => {
       // Fetch user and log successful login
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // Check user role
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!roleData) {
+          toast({
+            title: "Access Denied",
+            description: "No role assigned. Please contact administrator.",
+            variant: "destructive"
+          });
+          await supabase.auth.signOut();
+          setIsLoading(false);
+          return;
+        }
+
         await supabase.from('audit_logs').insert({
           user_id: user.id,
           action: 'login_success',
           details: 'Successful login with 2FA'
         });
       }
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user!.id)
-        .maybeSingle();
 
       toast({
         title: "Success",
         description: "Login successful!",
       });
       
-      navigate("/dashboard", { state: { role: roleData?.role || 'user' } });
+      navigate("/dashboard");
     } catch (error) {
       toast({
         title: "Error",
